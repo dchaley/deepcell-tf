@@ -216,6 +216,7 @@ def create_rgb_image(input_data, channel_colors):
     if len(channel_colors) != input_data.shape[-1]:
         raise ValueError('Must provide same number of channel_colors as channels in input_data')
 
+    # initialize RGB values to zero
     rgb_data = np.zeros(input_data.shape[:3] + (3,), dtype='float32')
 
     # rescale channels to aid plotting
@@ -236,7 +237,6 @@ def create_rgb_image(input_data, channel_colors):
                 color_idx = np.where(np.isin(valid_channels, channel_colors[channel]))
                 rgb_data[img, :, :, color_idx] = rescaled_intensity
 
-    # create a blank array for red channel
     return rgb_data
 
 
