@@ -32,6 +32,7 @@ import timeit
 import numpy as np
 
 from deepcell_toolbox.utils import resize, tile_image, untile_image
+from deepcell.utils.misc_utils import LOGGING_SECONDS_PRECISION
 
 
 class Application:
@@ -115,12 +116,14 @@ class Application:
         """
         # Don't scale the image if mpp is the same or not defined
         if image_mpp not in {None, self.model_mpp}:
+            t = timeit.default_timer()
             shape = image.shape
             scale_factor = image_mpp / self.model_mpp
             new_shape = (int(shape[1] * scale_factor),
                          int(shape[2] * scale_factor))
             image = resize(image, new_shape, data_format='channels_last')
-            self.logger.debug('Resized input from %s to %s', shape, new_shape)
+            self.logger.debug('Resized input from %s to %s in %s s', shape, new_shape,
+                              round(timeit.default_timer() - t, LOGGING_SECONDS_PRECISION))
 
         return image
 
@@ -144,7 +147,7 @@ class Application:
 
             self.logger.debug('Pre-processed data with %s in %s s',
                               self.preprocessing_fn.__name__,
-                              timeit.default_timer() - t)
+                              round(timeit.default_timer() - t, LOGGING_SECONDS_PRECISION))
 
         return image
 
@@ -170,6 +173,8 @@ class Application:
                              'Image submitted for predict has {} dimensions'.format(
                                  len(image.shape)))
 
+        t = timeit.default_timer()
+
         # Check difference between input and model image size
         x_diff = image.shape[1] - self.model_image_shape[0]
         y_diff = image.shape[2] - self.model_image_shape[1]
@@ -190,6 +195,9 @@ class Application:
             # Tile images, needs 4d
             tiles, tiles_info = tile_image(image, model_input_shape=self.model_image_shape,
                                            stride_ratio=0.75, pad_mode=pad_mode)
+
+        self.logger.debug('_tile_input finished in %s s',
+                          round(timeit.default_timer() - t, LOGGING_SECONDS_PRECISION))
 
         return tiles, tiles_info
 
@@ -217,7 +225,7 @@ class Application:
 
             self.logger.debug('Post-processed results with %s in %s s',
                               self.postprocessing_fn.__name__,
-                              timeit.default_timer() - t)
+                              round(timeit.default_timer() - t, LOGGING_SECONDS_PRECISION))
 
         elif isinstance(image, list) and len(image) == 1:
             image = image[0]
@@ -235,6 +243,8 @@ class Application:
         Returns:
             numpy.array or list: Array or list according to input with untiled images
         """
+        t = timeit.default_timer()
+
         # If padding was used, remove padding
         if tiles_info.get('padding', False):
             def _process(im, tiles_info):
@@ -255,6 +265,9 @@ class Application:
             output_images = [_process(o, tiles_info) for o in output_tiles]
         else:
             output_images = _process(output_tiles, tiles_info)
+
+        self.logger.debug('_untile_output finished in %s s',
+                          round(timeit.default_timer() - t, LOGGING_SECONDS_PRECISION))
 
         return output_images
 
@@ -286,6 +299,8 @@ class Application:
         Returns:
             numpy.array: Rescaled image
         """
+        t = timeit.default_timer()
+
         if not isinstance(image, list):
             image = [image]
 
@@ -311,6 +326,9 @@ class Application:
         if len(image) == 1:
             image = image[0]
 
+        self.logger.debug('_resize_output finished in %s s',
+                          round(timeit.default_timer() - t, LOGGING_SECONDS_PRECISION))
+
         return image
 
     def _batch_predict(self, tiles, batch_size):
@@ -328,6 +346,8 @@ class Application:
         Returns:
             list: Model outputs
         """
+
+        t = timeit.default_timer()
 
         # list to hold final output
         output_tiles = []
@@ -352,6 +372,9 @@ class Application:
             for j, batch_out in enumerate(batch_outputs):
                 output_tiles[j][i:i + batch_size, ...] = batch_out
 
+        self.logger.debug('Model inference finished in %s s',
+                          round(timeit.default_timer() - t, LOGGING_SECONDS_PRECISION))
+
         return output_tiles
 
     def _run_model(self,
@@ -371,6 +394,8 @@ class Application:
         Returns:
             numpy.array: Model outputs
         """
+        t = timeit.default_timer()
+
         # Preprocess image if function is defined
         image = self._preprocess(image, **preprocess_kwargs)
 
@@ -378,16 +403,16 @@ class Application:
         tiles, tiles_info = self._tile_input(image, pad_mode=pad_mode)
 
         # Run images through model
-        t = timeit.default_timer()
         output_tiles = self._batch_predict(tiles=tiles, batch_size=batch_size)
-        self.logger.debug('Model inference finished in %s s',
-                          timeit.default_timer() - t)
 
         # Untile images
         output_images = self._untile_output(output_tiles, tiles_info)
 
         # restructure outputs into a dict if function provided
         formatted_images = self._format_model_output(output_images)
+
+        self.logger.debug('Run model finished in %s s',
+                          round(timeit.default_timer() - t, LOGGING_SECONDS_PRECISION))
 
         return formatted_images
 

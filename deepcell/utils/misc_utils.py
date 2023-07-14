@@ -28,6 +28,7 @@
 
 import re
 
+LOGGING_SECONDS_PRECISION = 4
 
 def sorted_nicely(ll):
     """Sort a list of strings by the numerical order of all substrings
